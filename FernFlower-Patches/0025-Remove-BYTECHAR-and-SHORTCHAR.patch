@@ -1,0 +1,438 @@
+From 00eca202595a62ce797569562f90c85162bcd88d Mon Sep 17 00:00:00 2001
+From: Pokechu22 <Pokechu022@gmail.com>
+Date: Sun, 5 Aug 2018 00:08:43 -0700
+Subject: [PATCH] Remove BYTECHAR and SHORTCHAR
+
+
+diff --git a/src/org/jetbrains/java/decompiler/code/CodeConstants.java b/src/org/jetbrains/java/decompiler/code/CodeConstants.java
+index 9339c16..507b19a 100644
+--- a/src/org/jetbrains/java/decompiler/code/CodeConstants.java
++++ b/src/org/jetbrains/java/decompiler/code/CodeConstants.java
+@@ -42,8 +42,6 @@ public interface CodeConstants {
+     GROUP2EMPTY('G', TypeFamily.UNKNOWN),
+     NULL(null, TypeFamily.OBJECT),
+     NOTINITIALIZED('N', TypeFamily.UNKNOWN),
+-    BYTECHAR('X', TypeFamily.INTEGER, null, "java/lang/Byte"),
+-    SHORTCHAR('Y', TypeFamily.INTEGER, null, "java/lang/Short"),
+     UNKNOWN('U', TypeFamily.UNKNOWN),
+     GENVAR(null, TypeFamily.UNKNOWN) {
+       @Override
+diff --git a/src/org/jetbrains/java/decompiler/modules/decompiler/ExprProcessor.java b/src/org/jetbrains/java/decompiler/modules/decompiler/ExprProcessor.java
+index 9b2146c..a62754d 100644
+--- a/src/org/jetbrains/java/decompiler/modules/decompiler/ExprProcessor.java
++++ b/src/org/jetbrains/java/decompiler/modules/decompiler/ExprProcessor.java
+@@ -908,9 +908,7 @@ public class ExprProcessor implements CodeConstants {
+     if (exprent.type == Exprent.EXPRENT_CONST) {
+       switch (((ConstExprent)exprent).getConstType().type) {
+         case BYTE:
+-        case BYTECHAR:
+         case SHORT:
+-        case SHORTCHAR:
+         case INT:
+           return true;
+         default:
+diff --git a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/ArrayExprent.java b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/ArrayExprent.java
+index d6b1b50..2810c6d 100644
+--- a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/ArrayExprent.java
++++ b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/ArrayExprent.java
+@@ -50,7 +50,7 @@ public class ArrayExprent extends Exprent {
+ 
+   public CheckTypesResult checkExprTypeBounds() {
+     CheckTypesResult result = new CheckTypesResult();
+-    result.addMinTypeExprent(index, VarType.VARTYPE_BYTECHAR);
++    result.addMinTypeExprent(index, VarType.VARTYPE_BYTE);
+     result.addMaxTypeExprent(index, VarType.VARTYPE_INT);
+     return result;
+   }
+diff --git a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/ConstExprent.java b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/ConstExprent.java
+index 777832d..18c8dd2 100644
+--- a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/ConstExprent.java
++++ b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/ConstExprent.java
+@@ -62,21 +62,12 @@ public class ConstExprent extends Exprent {
+       }
+       return constType;
+     }
+-    else if (0 <= val && val <= 127) {
+-      return VarType.VARTYPE_BYTECHAR;
+-    }
+     else if (-128 <= val && val <= 127) {
+       return VarType.VARTYPE_BYTE;
+     }
+-    else if (0 <= val && val <= 32767) {
+-      return VarType.VARTYPE_SHORTCHAR;
+-    }
+     else if (-32768 <= val && val <= 32767) {
+       return VarType.VARTYPE_SHORT;
+     }
+-    else if (0 <= val && val <= 0xFFFF) {
+-      return VarType.VARTYPE_CHAR;
+-    }
+     else {
+       return VarType.VARTYPE_INT;
+     }
+@@ -131,9 +122,7 @@ public class ConstExprent extends Exprent {
+         return new TextBuffer(ret).enclose("'", "'");
+ 
+       case BYTE:
+-      case BYTECHAR:
+       case SHORT:
+-      case SHORTCHAR:
+       case INT:
+         int intVal = (Integer)value;
+         if (!literal) {
+@@ -317,9 +306,7 @@ public class ConstExprent extends Exprent {
+       case BOOLEAN:
+       case CHAR:
+       case BYTE:
+-      case BYTECHAR:
+       case SHORT:
+-      case SHORTCHAR:
+       case INT:
+         int value = (Integer)this.value;
+         return value == 0 || (DecompilerContext.getOption(IFernflowerPreferences.BOOLEAN_TRUE_ONE) && value == 1);
+@@ -333,9 +320,7 @@ public class ConstExprent extends Exprent {
+       case BOOLEAN:
+       case CHAR:
+       case BYTE:
+-      case BYTECHAR:
+       case SHORT:
+-      case SHORTCHAR:
+       case INT:
+         return (Integer)value == 1;
+       case LONG:
+@@ -373,15 +358,12 @@ public class ConstExprent extends Exprent {
+   }
+ 
+   public void adjustConstType(VarType expectedType) {
+-    // BYTECHAR and SHORTCHAR => CHAR in the CHAR context
++    // BYTE, SHORT, INT => CHAR in the CHAR context
+     if ((expectedType.equals(VarType.VARTYPE_CHAR) || expectedType.equals(VarType.VARTYPE_CHARACTER)) &&
+-            (constType.equals(VarType.VARTYPE_BYTECHAR) || constType.equals(VarType.VARTYPE_SHORTCHAR))) {
+-      int intValue = getIntValue();
+-      if (isPrintableAscii(intValue) || CHAR_ESCAPES.containsKey(intValue)) {
+-        setConstType(VarType.VARTYPE_CHAR);
+-      }
++            isValidChar()) {
++      setConstType(VarType.VARTYPE_CHAR);
+     }
+-    // BYTE, BYTECHAR, SHORTCHAR, SHORT, CHAR => INT in the INT context
++    // BYTE, SHORT, CHAR => INT in the INT context
+     else if ((expectedType.equals(VarType.VARTYPE_INT) || expectedType.equals(VarType.VARTYPE_INTEGER)) &&
+             constType.typeFamily == CodeConstants.TypeFamily.INTEGER) {
+       setConstType(VarType.VARTYPE_INT);
+@@ -405,6 +387,19 @@ public class ConstExprent extends Exprent {
+     return boolPermitted;
+   }
+ 
++  // Only positive values can be used as characters.
++  public boolean isValidChar() {
++    if (constType.type == CodeConstants.Type.CHAR) {
++      return true;
++    }
++    else if (constType.type == CodeConstants.Type.BYTE ||
++        constType.type == CodeConstants.Type.SHORT ||
++        constType.type == CodeConstants.Type.INT) {
++      return getIntValue() >= Character.MIN_VALUE && getIntValue() <= Character.MAX_VALUE;
++    }
++    return false;
++  }
++
+   @Override
+   public void getBytecodeRange(BitSet values) {
+     measureBytecode(values);
+diff --git a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/FunctionExprent.java b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/FunctionExprent.java
+index 14f63c5..67a94f6 100644
+--- a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/FunctionExprent.java
++++ b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/FunctionExprent.java
+@@ -380,7 +380,7 @@ public class FunctionExprent extends Exprent {
+       case FUNCTION_I2B:
+       case FUNCTION_I2C:
+       case FUNCTION_I2S:
+-        result.addMinTypeExprent(param1, VarType.VARTYPE_BYTECHAR);
++        result.addMinTypeExprent(param1, VarType.VARTYPE_BYTE);
+         result.addMaxTypeExprent(param1, VarType.VARTYPE_INT);
+         break;
+       case FUNCTION_IMM:
+@@ -402,11 +402,11 @@ public class FunctionExprent extends Exprent {
+       case FUNCTION_GE:
+       case FUNCTION_GT:
+       case FUNCTION_LE:
+-        result.addMinTypeExprent(param2, VarType.VARTYPE_BYTECHAR);
++        result.addMinTypeExprent(param2, VarType.VARTYPE_BYTE);
+       case FUNCTION_BIT_NOT:
+         // case FUNCTION_BOOL_NOT:
+       case FUNCTION_NEG:
+-        result.addMinTypeExprent(param1, VarType.VARTYPE_BYTECHAR);
++        result.addMinTypeExprent(param1, VarType.VARTYPE_BYTE);
+         break;
+       case FUNCTION_AND:
+       case FUNCTION_OR:
+@@ -415,7 +415,7 @@ public class FunctionExprent extends Exprent {
+       case FUNCTION_NE: {
+         if (type1.type == CodeConstants.Type.BOOLEAN) {
+           if (type2.isStrictSuperset(type1)) {
+-            result.addMinTypeExprent(param1, VarType.VARTYPE_BYTECHAR);
++            result.addMinTypeExprent(param1, VarType.VARTYPE_BYTE);
+           }
+           else { // both are booleans
+             boolean param1_false_boolean =
+@@ -424,14 +424,14 @@ public class FunctionExprent extends Exprent {
+               type1.isFalseBoolean() || (param2.type == Exprent.EXPRENT_CONST && !((ConstExprent)param2).hasBooleanValue());
+ 
+             if (param1_false_boolean || param2_false_boolean) {
+-              result.addMinTypeExprent(param1, VarType.VARTYPE_BYTECHAR);
+-              result.addMinTypeExprent(param2, VarType.VARTYPE_BYTECHAR);
++              result.addMinTypeExprent(param1, VarType.VARTYPE_BYTE);
++              result.addMinTypeExprent(param2, VarType.VARTYPE_BYTE);
+             }
+           }
+         }
+         else if (type2.type == CodeConstants.Type.BOOLEAN) {
+           if (type1.isStrictSuperset(type2)) {
+-            result.addMinTypeExprent(param2, VarType.VARTYPE_BYTECHAR);
++            result.addMinTypeExprent(param2, VarType.VARTYPE_BYTE);
+           }
+         }
+       }
+diff --git a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/InvocationExprent.java b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/InvocationExprent.java
+index ca4b622..bb3f80f 100644
+--- a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/InvocationExprent.java
++++ b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/InvocationExprent.java
+@@ -588,19 +588,29 @@ public class InvocationExprent extends Exprent {
+ 
+       // special handling for ambiguous types
+       if (lstParameters.get(0).type == Exprent.EXPRENT_CONST) {
+-        // 'Integer.valueOf(1)' has '1' type detected as TYPE_BYTECHAR
+-        // 'Integer.valueOf(40_000)' has '40_000' type detected as TYPE_CHAR
+-        // so we check the type family instead
+-        if (lstParameters.get(0).getExprType().typeFamily == CodeConstants.TypeFamily.INTEGER) {
+-          if (classname.equals("java/lang/Integer")) {
++        ConstExprent expr = (ConstExprent)lstParameters.get(0);
++
++        if (expr.isValidChar()) {
++          if (classname.equals("java/lang/Character")) {
+             return true;
+           }
+         }
+ 
+-        if (paramType == CodeConstants.Type.BYTECHAR || paramType == CodeConstants.Type.SHORTCHAR) {
+-          if (classname.equals("java/lang/Character") || classname.equals("java/lang/Short")) {
+-            return true;
+-          }
++        // Since 1 is a byte, short, and integer, check all of them
++        switch (expr.getExprType().type) {
++          case BYTE:
++            if (classname.equals("java/lang/Byte")) {
++              return true;
++            }
++          case SHORT:
++            if (classname.equals("java/lang/Short")) {
++              return true;
++            }
++          case INT:
++            if (classname.equals("java/lang/Integer")) {
++              return true;
++            }
++          default:
+         }
+       }
+ 
+diff --git a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/NewExprent.java b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/NewExprent.java
+index f54c0df..d11535e 100644
+--- a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/NewExprent.java
++++ b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/NewExprent.java
+@@ -98,7 +98,7 @@ public class NewExprent extends Exprent {
+ 
+     if (newType.arrayDim != 0) {
+       for (Exprent dim : lstDims) {
+-        result.addMinTypeExprent(dim, VarType.VARTYPE_BYTECHAR);
++        result.addMinTypeExprent(dim, VarType.VARTYPE_BYTE);
+         result.addMaxTypeExprent(dim, VarType.VARTYPE_INT);
+       }
+ 
+diff --git a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/SwitchExprent.java b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/SwitchExprent.java
+index 622cdec..65b59b3 100644
+--- a/src/org/jetbrains/java/decompiler/modules/decompiler/exps/SwitchExprent.java
++++ b/src/org/jetbrains/java/decompiler/modules/decompiler/exps/SwitchExprent.java
+@@ -47,7 +47,7 @@ public class SwitchExprent extends Exprent {
+   public CheckTypesResult checkExprTypeBounds() {
+     CheckTypesResult result = new CheckTypesResult();
+ 
+-    result.addMinTypeExprent(value, VarType.VARTYPE_BYTECHAR);
++    result.addMinTypeExprent(value, VarType.VARTYPE_BYTE);
+     result.addMaxTypeExprent(value, VarType.VARTYPE_INT);
+ 
+     VarType valType = value.getExprType();
+diff --git a/src/org/jetbrains/java/decompiler/modules/decompiler/vars/VarVersionsProcessor.java b/src/org/jetbrains/java/decompiler/modules/decompiler/vars/VarVersionsProcessor.java
+index 486f464..113152a 100644
+--- a/src/org/jetbrains/java/decompiler/modules/decompiler/vars/VarVersionsProcessor.java
++++ b/src/org/jetbrains/java/decompiler/modules/decompiler/vars/VarVersionsProcessor.java
+@@ -113,100 +113,17 @@ public class VarVersionsProcessor {
+   }
+ 
+   private static void eliminateNonJavaTypes(VarTypeProcessor typeProcessor) {
+-    Map<VarVersionPair, VarType> mapExprentMaxTypes = typeProcessor.getMapExprentMaxTypes();
+     Map<VarVersionPair, VarType> mapExprentMinTypes = typeProcessor.getMapExprentMinTypes();
+ 
+     for (VarVersionPair paar : new ArrayList<>(mapExprentMinTypes.keySet())) {
+       VarType type = mapExprentMinTypes.get(paar);
+-      VarType maxType = mapExprentMaxTypes.get(paar);
+ 
+-      if (type.type == CodeConstants.Type.BYTECHAR || type.type == CodeConstants.Type.SHORTCHAR) {
+-        if (maxType != null && maxType.type == CodeConstants.Type.CHAR) {
+-          type = VarType.VARTYPE_CHAR;
+-        }
+-        else {
+-          type = type.type == CodeConstants.Type.BYTECHAR ? VarType.VARTYPE_BYTE : VarType.VARTYPE_SHORT;
+-        }
+-        mapExprentMinTypes.put(paar, type);
+-        //} else if(type.type == CodeConstants.Type.CHAR && (maxType == null || maxType.type == CodeConstants.Type.INT)) { // when possible, lift char to int
+-        //	mapExprentMinTypes.put(paar, VarType.VARTYPE_INT);
+-      }
+-      else if (type.type == CodeConstants.Type.NULL) {
++      if (type.type == CodeConstants.Type.NULL) {
+         mapExprentMinTypes.put(paar, VarType.VARTYPE_OBJECT);
+       }
+     }
+   }
+ 
+-  private static void simpleMerge(VarTypeProcessor typeProcessor, DirectGraph graph, StructMethod mt) {
+-    Map<VarVersionPair, VarType> mapExprentMaxTypes = typeProcessor.getMapExprentMaxTypes();
+-    Map<VarVersionPair, VarType> mapExprentMinTypes = typeProcessor.getMapExprentMinTypes();
+-
+-    Map<Integer, Set<Integer>> mapVarVersions = new HashMap<>();
+-
+-    for (VarVersionPair pair : mapExprentMinTypes.keySet()) {
+-      if (pair.version >= 0) {  // don't merge constants
+-        mapVarVersions.computeIfAbsent(pair.var, k -> new HashSet<>()).add(pair.version);
+-      }
+-    }
+-
+-    boolean is_method_static = mt.hasModifier(CodeConstants.ACC_STATIC);
+-
+-    Map<VarVersionPair, Integer> mapMergedVersions = new HashMap<>();
+-
+-    for (Entry<Integer, Set<Integer>> ent : mapVarVersions.entrySet()) {
+-
+-      if (ent.getValue().size() > 1) {
+-        List<Integer> lstVersions = new ArrayList<>(ent.getValue());
+-        Collections.sort(lstVersions);
+-
+-        for (int i = 0; i < lstVersions.size(); i++) {
+-          VarVersionPair firstPair = new VarVersionPair(ent.getKey(), lstVersions.get(i));
+-          VarType firstType = mapExprentMinTypes.get(firstPair);
+-
+-          if (firstPair.var == 0 && firstPair.version == 1 && !is_method_static) {
+-            continue; // don't merge 'this' variable
+-          }
+-
+-          for (int j = i + 1; j < lstVersions.size(); j++) {
+-            VarVersionPair secondPair = new VarVersionPair(ent.getKey(), lstVersions.get(j));
+-            VarType secondType = mapExprentMinTypes.get(secondPair);
+-
+-            if (firstType.equals(secondType) ||
+-                (firstType.equals(VarType.VARTYPE_NULL) && secondType.type == CodeConstants.Type.OBJECT) ||
+-                (secondType.equals(VarType.VARTYPE_NULL) && firstType.type == CodeConstants.Type.OBJECT)) {
+-
+-              VarType firstMaxType = mapExprentMaxTypes.get(firstPair);
+-              VarType secondMaxType = mapExprentMaxTypes.get(secondPair);
+-              VarType type = firstMaxType == null ? secondMaxType :
+-                             secondMaxType == null ? firstMaxType :
+-                             VarType.getCommonMinType(firstMaxType, secondMaxType);
+-
+-              mapExprentMaxTypes.put(firstPair, type);
+-              mapMergedVersions.put(secondPair, firstPair.version);
+-              mapExprentMaxTypes.remove(secondPair);
+-              mapExprentMinTypes.remove(secondPair);
+-
+-              if (firstType.equals(VarType.VARTYPE_NULL)) {
+-                mapExprentMinTypes.put(firstPair, secondType);
+-                firstType = secondType;
+-              }
+-
+-              typeProcessor.getMapFinalVars().put(firstPair, VarTypeProcessor.VAR_NON_FINAL);
+-
+-              lstVersions.remove(j);
+-              //noinspection AssignmentToForLoopParameter
+-              j--;
+-            }
+-          }
+-        }
+-      }
+-    }
+-
+-    if (!mapMergedVersions.isEmpty()) {
+-      updateVersions(graph, mapMergedVersions);
+-    }
+-  }
+-
+   private void setNewVarIndices(VarTypeProcessor typeProcessor, DirectGraph graph, VarVersionsProcessor previousVersionsProcessor) {
+     final Map<VarVersionPair, VarType> mapExprentMaxTypes = typeProcessor.getMapExprentMaxTypes();
+     Map<VarVersionPair, VarType> mapExprentMinTypes = typeProcessor.getMapExprentMinTypes();
+diff --git a/src/org/jetbrains/java/decompiler/struct/gen/VarType.java b/src/org/jetbrains/java/decompiler/struct/gen/VarType.java
+index 53bbcdb..d018910 100644
+--- a/src/org/jetbrains/java/decompiler/struct/gen/VarType.java
++++ b/src/org/jetbrains/java/decompiler/struct/gen/VarType.java
+@@ -19,8 +19,6 @@ public class VarType {  // TODO: optimize switch
+   public static final VarType VARTYPE_CHAR = new VarType(CodeConstants.Type.CHAR);
+   public static final VarType VARTYPE_SHORT = new VarType(CodeConstants.Type.SHORT);
+   public static final VarType VARTYPE_BOOLEAN = new VarType(CodeConstants.Type.BOOLEAN);
+-  public static final VarType VARTYPE_BYTECHAR = new VarType(CodeConstants.Type.BYTECHAR);
+-  public static final VarType VARTYPE_SHORTCHAR = new VarType(CodeConstants.Type.SHORTCHAR);
+ 
+   public static final VarType VARTYPE_NULL = new VarType(CodeConstants.Type.NULL, 0, null);
+   public static final VarType VARTYPE_STRING = new VarType(CodeConstants.Type.OBJECT, 0, "java/lang/String");
+@@ -188,11 +186,7 @@ public class VarType {  // TODO: optimize switch
+       case SHORT:
+         res |= (valType == CodeConstants.Type.BYTE);
+       case CHAR:
+-        res |= (valType == CodeConstants.Type.SHORTCHAR);
+       case BYTE:
+-      case SHORTCHAR:
+-        res |= (valType == CodeConstants.Type.BYTECHAR);
+-      case BYTECHAR:
+         res |= (valType == CodeConstants.Type.BOOLEAN);
+         break;
+ 
+@@ -263,14 +257,6 @@ public class VarType {  // TODO: optimize switch
+     }
+     else if (type1.typeFamily == type2.typeFamily) {
+       switch (type1.typeFamily) {
+-        case INTEGER:
+-          if ((type1.type == CodeConstants.Type.CHAR && type2.type == CodeConstants.Type.SHORT)
+-              || (type1.type == CodeConstants.Type.SHORT && type2.type == CodeConstants.Type.CHAR)) {
+-            return VARTYPE_SHORTCHAR;
+-          }
+-          else {
+-            return VARTYPE_BYTECHAR;
+-          }
+         case OBJECT:
+           return VARTYPE_NULL;
+         default:
+@@ -295,13 +281,7 @@ public class VarType {  // TODO: optimize switch
+     else if (type1.typeFamily == type2.typeFamily) {
+       switch (type1.typeFamily) {
+         case INTEGER:
+-          if ((type1.type == CodeConstants.Type.SHORTCHAR && type2.type == CodeConstants.Type.BYTE)
+-              || (type1.type == CodeConstants.Type.BYTE && type2.type == CodeConstants.Type.SHORTCHAR)) {
+-            return VARTYPE_SHORT;
+-          }
+-          else {
+-            return VARTYPE_INT;
+-          }
++          return VARTYPE_INT;
+         case OBJECT:
+           return VARTYPE_OBJECT;
+         default:
+@@ -316,7 +296,7 @@ public class VarType {  // TODO: optimize switch
+       case BOOLEAN:
+         return VARTYPE_BOOLEAN;
+       case INTEGER:
+-        return VARTYPE_BYTECHAR;
++        return VARTYPE_BYTE;
+       case OBJECT:
+         return VARTYPE_NULL;
+       case FLOAT:
+-- 
+2.17.0
+
